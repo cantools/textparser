@@ -219,6 +219,10 @@ class ParseError(Error):
 
         return self._column
 
+    def __reduce__(self):
+        """Adds pickling support."""
+        return type(self), (self._text, self._offset), {}
+
 
 Token = namedtuple('Token', ['kind', 'value', 'offset'])
 

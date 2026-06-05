@@ -1,3 +1,4 @@
+import pickle
 import unittest
 from collections import namedtuple
 
@@ -1114,6 +1115,21 @@ class TextParserTest(unittest.TestCase):
                              ],
                              '}',
                              ';'])
+
+    def test_error_picklable(self):
+        class Parser(textparser.Parser):
+
+            def grammar(self):
+                return Sequence('__EOF__')
+
+        try:
+            Parser().parse('123', match_sof=True)
+        except Exception as exc:
+            self.assertIsInstance(exc, textparser.ParseError)
+            pickled = pickle.dumps(exc)
+            unpickled = pickle.loads(pickled)
+            self.assertIsInstance(unpickled, textparser.ParseError)
+            self.assertEqual(repr(unpickled), repr(exc))
 
 
 if __name__ == '__main__':
