@@ -1,7 +1,6 @@
 import collections
 import pickle
 import unittest
-import typing
 from collections import namedtuple
 from typing import cast
 

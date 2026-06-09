@@ -28,6 +28,9 @@ jobs:
     - name: Static type checking (mypy)
       run: |
         python -m mypy --strict textparser.py tests
+    - name: Linting (ruff)
+      run: |
+        ruff check textparser.py tests
 
   release:
     needs: [test]

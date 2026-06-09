@@ -29,6 +29,7 @@ setup(name='textparser',
       extras_require={
           "test": [
               "mypy >= 2.1",
+              "ruff >= 0.15.12",
           ],
       },
       test_suite="tests")
