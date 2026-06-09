@@ -26,4 +26,9 @@ setup(name='textparser',
       url='https://github.com/eerimoq/textparser',
       py_modules=['textparser'],
       python_requires='>=3.10',
+      extras_require={
+          "test": [
+              "mypy >= 2.1",
+          ],
+      },
       test_suite="tests")
