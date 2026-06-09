@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from setuptools import setup
 from setuptools import find_packages
@@ -20,10 +20,10 @@ setup(name='textparser',
       license='MIT',
       classifiers=[
           'License :: OSI Approved :: MIT License',
-          'Programming Language :: Python :: 2',
           'Programming Language :: Python :: 3',
       ],
       keywords=['parser', 'parsing'],
       url='https://github.com/eerimoq/textparser',
       py_modules=['textparser'],
+      python_requires='>=3.10',
       test_suite="tests")
