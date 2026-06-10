@@ -32,4 +32,7 @@ setup(name='textparser',
               "ruff >= 0.15.12",
           ],
       },
+      package_data={
+          "textparser": ["py.typed"],
+      },
       test_suite="tests")
