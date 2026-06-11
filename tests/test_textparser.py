@@ -1,34 +1,53 @@
+import collections
 import pickle
 import unittest
 from collections import namedtuple
+from typing import cast
 
 import textparser
-from textparser import Grammar
-from textparser import Sequence
-from textparser import Choice
-from textparser import choice
-from textparser import ChoiceDict
-from textparser import ZeroOrMore
-from textparser import ZeroOrMoreDict
-from textparser import OneOrMore
-from textparser import OneOrMoreDict
-from textparser import DelimitedList
-from textparser import Token
-from textparser import TokenizeError
-from textparser import tokenize_init
-from textparser import Any
-from textparser import AnyUntil
-from textparser import Optional
-from textparser import Tag
-from textparser import Forward
-from textparser import NoMatch
-from textparser import Not
-from textparser import And
-from textparser import markup_line
-from textparser import replace_blocks
+from textparser import (
+    And,
+    Any,
+    AnyUntil,
+    Choice,
+    ChoiceDict,
+    DelimitedList,
+    Forward,
+    Grammar,
+    MatchObject,
+    NoMatch,
+    Not,
+    OneOrMore,
+    OneOrMoreDict,
+    Optional,
+    Pattern,
+    Sequence,
+    Tag,
+    Token,
+    TokenizeError,
+    ZeroOrMore,
+    ZeroOrMoreDict,
+    _Mismatch,
+    _Tokens,
+    choice,
+    markup_line,
+    replace_blocks,
+    tokenize_init,
+)
 
+# list of tuples containing the arguments for the Token class. Used to
+# create a list of Token objects.
+TokenizeItems = list[tuple[str,str]|tuple[str,str,int]]
 
-def tokenize(items, add_eof_token=True):
+# Specify the tree of tokens and the expected match result for a given
+# grammar
+GrammarMatchSpec = tuple[TokenizeItems, MatchObject]
+
+# Specify the tree of tokens and the line number where the grammar
+# is supposed to not match the token tree
+GrammarMismatchSpec = tuple[TokenizeItems, int]
+
+def tokenize(items: TokenizeItems, add_eof_token: bool=True) -> list[Token]:
     tokens = []
 
     for item in items:
@@ -47,30 +66,30 @@ def tokenize(items, add_eof_token=True):
 
 class TextParserTest(unittest.TestCase):
 
-    def parse_and_assert_tree(self, grammar, datas):
-        for tokens, expected_tree in datas:
-            tree = grammar.parse(tokenize(tokens))
-            self.assertEqual(tree, expected_tree)
+    def parse_and_assert_tree(self, grammar: Grammar, test_specs: list[GrammarMatchSpec]) -> None:
+        for token_items, expected_tree in test_specs:
+            token_tree = grammar.parse(tokenize(token_items))
+            self.assertEqual(token_tree, expected_tree)
 
-    def parse_and_assert_mismatch(self, grammar, datas):
-        for tokens, line in datas:
-            tokens = tokenize(tokens)
+    def parse_and_assert_mismatch(self, grammar: Grammar, test_specs: list[GrammarMismatchSpec]) -> None:
+        for token_items, line in test_specs:
+            token_tree = tokenize(token_items)
 
             with self.assertRaises(textparser.GrammarError) as cm:
-                grammar.parse(tokens)
+                grammar.parse(token_tree)
 
             self.assertEqual(cm.exception.offset, line)
 
-    def test_grammar_sequence(self):
+    def test_grammar_sequence(self) -> None:
         grammar = Grammar(Sequence('NUMBER', 'WORD'))
         tokens = tokenize([
             ('NUMBER', '1.45'),
             ('WORD', 'm')
         ])
-        tree = grammar.parse(tokens)
-        self.assertEqual(tree, ['1.45', 'm'])
+        match_object = grammar.parse(tokens)
+        self.assertEqual(match_object, ['1.45', 'm'])
 
-    def test_grammar_sequence_mismatch(self):
+    def test_grammar_sequence_mismatch(self) -> None:
         grammar = Grammar(Sequence('NUMBER', 'WORD'))
         tokens = tokenize([('NUMBER', '1.45')])
 
@@ -79,10 +98,10 @@ class TextParserTest(unittest.TestCase):
 
         self.assertEqual(cm.exception.offset, -1)
 
-    def test_grammar_choice(self):
+    def test_grammar_choice(self) -> None:
         grammar = Grammar(Choice('NUMBER', 'WORD'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('WORD', 'm')],
                 'm'
@@ -95,18 +114,18 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_choice_mismatch(self):
+    def test_grammar_choice_mismatch(self) -> None:
         grammar = Grammar(Choice(Sequence('NUMBER', 'WORD'),
                                  'WORD'))
 
-        datas = [
+        datas: list[GrammarMismatchSpec] = [
             ([('NUMBER', '1', 5)], -1),
             ([('NUMBER', '1', 5), ('NUMBER', '2', 7)], 7)
         ]
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_grammar_choice_dict(self):
+    def test_grammar_choice_dict(self) -> None:
         number = Forward()
         number <<= Sequence('NUMBER')
         grammar = Grammar(ChoiceDict(number,
@@ -114,10 +133,13 @@ class TextParserTest(unittest.TestCase):
                                      ChoiceDict('BAR'),
                                      'FIE'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('WORD', 'm')],
-                ('foo', ['m'])
+                # the cast is necessary because mypy does not
+                # recognize (str, MatchObject) tuples as MatchObject,
+                # even though it should...
+                cast('MatchObject', ('foo', ['m']))
             ),
             (
                 [('NUMBER', '5')],
@@ -135,18 +157,18 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_choice_dict_mismatch(self):
+    def test_grammar_choice_dict_mismatch(self) -> None:
         grammar = Grammar(ChoiceDict(Sequence('NUMBER'),
                                      Sequence('WORD')))
         tokens = tokenize([(',', ',', 3)])
 
-        with self.assertRaises(textparser.Error) as cm:
+        with self.assertRaises(textparser.GrammarError) as cm:
             grammar.parse(tokens)
 
         self.assertEqual(cm.exception.offset, 3)
 
-    def test_grammar_choice_dict_init(self):
-        datas = [
+    def test_grammar_choice_dict_init(self) -> None:
+        datas: list[tuple[collections.abc.Sequence[Pattern|str], str]] = [
             (
                 ('WORD', 'WORD'),
                 "First token kind must be unique, but WORD isn't."
@@ -167,10 +189,10 @@ class TextParserTest(unittest.TestCase):
 
             self.assertEqual(str(cm.exception), message)
 
-    def test_grammar_delimited_list(self):
+    def test_grammar_delimited_list(self) -> None:
         grammar = Grammar(Sequence(DelimitedList('WORD'), Optional('.')))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('WORD', 'foo')],
                 [['foo'], []]
@@ -187,10 +209,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_delimited_list_mismatch(self):
+    def test_grammar_delimited_list_mismatch(self) -> None:
         grammar = Grammar(Sequence(DelimitedList('WORD'), Optional('.')))
 
-        datas = [
+        datas: list[GrammarMismatchSpec] = [
             (
                 [
                     ('WORD', 'foo', 1),
@@ -212,10 +234,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_grammar_zero_or_more(self):
+    def test_grammar_zero_or_more(self) -> None:
         grammar = Grammar(ZeroOrMore('WORD'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [],
                 []
@@ -232,11 +254,11 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_zero_or_more_partial_element_match(self):
+    def test_grammar_zero_or_more_partial_element_match(self) -> None:
         grammar = Grammar(Sequence(
             ZeroOrMore(Sequence('WORD', 'NUMBER')), 'WORD'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [
                     ('WORD', 'foo'),
@@ -250,10 +272,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_zero_or_more_dict(self):
+    def test_grammar_zero_or_more_dict(self) -> None:
         grammar = Grammar(ZeroOrMoreDict(Sequence('WORD', 'NUMBER')))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [],
                 {}
@@ -271,10 +293,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_one_or_more(self):
+    def test_grammar_one_or_more(self) -> None:
         grammar = Grammar(OneOrMore('WORD'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('WORD', 'foo')],
                 ['foo']
@@ -287,10 +309,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_one_or_more_mismatch(self):
+    def test_grammar_one_or_more_mismatch(self) -> None:
         grammar = Grammar(OneOrMore('WORD'))
 
-        datas = [
+        datas = cast('list[GrammarMismatchSpec]', [
             (
                 []
                 , -1
@@ -299,14 +321,14 @@ class TextParserTest(unittest.TestCase):
                 [('NUMBER', 'foo', 2)],
                 2
             )
-        ]
+        ])
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_grammar_one_or_more_dict(self):
+    def test_grammar_one_or_more_dict(self) -> None:
         grammar = Grammar(OneOrMoreDict(Sequence('WORD', 'NUMBER')))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('WORD', 'foo'), ('NUMBER', '1')],
                 {
@@ -326,10 +348,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_one_or_more_dict_mismatch(self):
+    def test_grammar_one_or_more_dict_mismatch(self) -> None:
         grammar = Grammar(OneOrMoreDict(Sequence('WORD', 'NUMBER')))
 
-        datas = [
+        datas = cast('list[GrammarMismatchSpec]', [
             (
                 [('WORD', 'foo', 5)],
                 -1
@@ -350,14 +372,14 @@ class TextParserTest(unittest.TestCase):
                 ],
                 8
             )
-        ]
+        ])
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_grammar_any(self):
+    def test_grammar_any(self) -> None:
         grammar = Grammar(Any())
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('A', r'a')],
                 'a'
@@ -370,10 +392,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_any_until(self):
+    def test_grammar_any_until(self) -> None:
         grammar = Grammar(Sequence(AnyUntil('STRING'), 'STRING'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('NUMBER', '1'),
                  ('WORD', 'a'),
@@ -384,12 +406,12 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_any_until_sequence(self):
+    def test_grammar_any_until_sequence(self) -> None:
         grammar = Grammar(Sequence(AnyUntil(Sequence('WORD', 'STRING')),
                                    'WORD',
                                    'STRING'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('NUMBER', '1'),
                  ('WORD', 'a'),
@@ -401,7 +423,7 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_1(self):
+    def test_grammar_1(self) -> None:
         grammar = Grammar(Sequence(
             'IF',
             choice(Sequence(choice('A', 'B'), 'STRING'),
@@ -412,7 +434,7 @@ class TextParserTest(unittest.TestCase):
                     choice(DelimitedList('STRING'), ZeroOrMore('NUMBER')), '.'),
             '.')))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [
                     ('IF', 'IF'),
@@ -437,7 +459,7 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_1_mismatch(self):
+    def test_grammar_1_mismatch(self) -> None:
         grammar = Grammar(Sequence(
             'IF',
             choice(Sequence(choice('A', 'B'), 'STRING'),
@@ -448,7 +470,7 @@ class TextParserTest(unittest.TestCase):
                     choice(DelimitedList('STRING'), ZeroOrMore('NUMBER')), '.'),
             '.')))
 
-        datas = [
+        datas = cast('list[GrammarMismatchSpec]', [
             (
                 [
                     ('IF', 'IF', 1),
@@ -483,16 +505,16 @@ class TextParserTest(unittest.TestCase):
                 ],
                 5
             )
-        ]
+        ])
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_grammar_forward(self):
+    def test_grammar_forward(self) -> None:
         foo = Forward()
         foo <<= Sequence('FOO')
         grammar = Grammar(foo)
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('FOO', 'foo')],
                 ['foo']
@@ -501,12 +523,12 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_forward_text(self):
+    def test_grammar_forward_text(self) -> None:
         foo = Forward()
         foo <<= 'FOO'
         grammar = Grammar(foo)
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('FOO', 'foo')],
                 'foo'
@@ -515,12 +537,12 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_optional(self):
+    def test_grammar_optional(self) -> None:
         grammar = Grammar(Sequence(Optional('WORD'),
                                    Optional('WORD'),
                                    Optional('NUMBER')))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [],
                 [[], [], []]
@@ -545,33 +567,33 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_tag(self):
+    def test_grammar_tag(self) -> None:
         grammar = Grammar(Tag('a',
                               Tag('b',
                                   choice(Tag('c', 'WORD'),
                                          Tag('d', Optional('NUMBER'))))))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('WORD', 'bar')],
-                ('a', ('b', ('c', 'bar')))
+                cast('MatchObject', ('a', ('b', ('c', 'bar'))))
             ),
             (
                 [('NUMBER', '1')],
-                ('a', ('b', ('d', ['1'])))
+                cast('MatchObject', ('a', ('b', ('d', ['1']))))
             ),
             (
                 [],
-                ('a', ('b', ('d', [])))
+                cast('MatchObject', ('a', ('b', ('d', []))))
             )
         ]
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_tag_mismatch(self):
+    def test_grammar_tag_mismatch(self) -> None:
         grammar = Grammar(Tag('a', 'WORD'))
 
-        datas = [
+        datas: list[GrammarMismatchSpec] = [
             (
                 [('NUMBER', 'bar')],
                 1
@@ -580,10 +602,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_grammar_and(self):
+    def test_grammar_and(self) -> None:
         grammar = Grammar(Sequence(And('NUMBER'), 'NUMBER'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('NUMBER', '1')],
                 [[], '1']
@@ -592,10 +614,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_and_mismatch(self):
+    def test_grammar_and_mismatch(self) -> None:
         grammar = Grammar(Sequence(And('NUMBER'), 'NUMBER'))
 
-        datas = [
+        datas: list[GrammarMismatchSpec] = [
             (
                 [('WORD', 'foo', 3), ('NUMBER', '1', 4)],
                 3
@@ -604,10 +626,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_grammar_not(self):
+    def test_grammar_not(self) -> None:
         grammar = Grammar(Sequence(Not('WORD'), 'NUMBER'))
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('NUMBER', '1')],
                 [[], '1']
@@ -616,10 +638,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_not_mismatch(self):
+    def test_grammar_not_mismatch(self) -> None:
         grammar = Grammar(Sequence(Not('WORD'), 'NUMBER'))
 
-        datas = [
+        datas: list[GrammarMismatchSpec] = [
             (
                 [('WORD', 'foo', 3), ('NUMBER', '1', 4)],
                 3
@@ -628,10 +650,10 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_grammar_no_match(self):
+    def test_grammar_no_match(self) -> None:
         grammar = Grammar(NoMatch())
 
-        datas = [
+        datas: list[GrammarMismatchSpec] = [
             (
                 [('NUMBER', '1', 3)],
                 3
@@ -644,20 +666,20 @@ class TextParserTest(unittest.TestCase):
 
         self.parse_and_assert_mismatch(grammar, datas)
 
-    def test_parse_start_and_end_of_file(self):
+    def test_parse_start_and_end_of_file(self) -> None:
         class Parser(textparser.Parser):
 
-            def grammar(self):
-                return Sequence('__SOF__', '__EOF__')
+            def grammar(self) -> Grammar:
+                return Grammar(Sequence('__SOF__', '__EOF__'))
 
         self.assertEqual(Parser().parse('', match_sof=True),
                          ['__SOF__', '__EOF__'])
 
-    def test_parse_start_of_file_mismatch(self):
+    def test_parse_start_of_file_mismatch(self) -> None:
         class Parser(textparser.Parser):
 
-            def grammar(self):
-                return Sequence('__EOF__')
+            def grammar(self) -> Grammar:
+                return Grammar(Sequence('__EOF__'))
 
         with self.assertRaises(textparser.ParseError) as cm:
             Parser().parse('123', match_sof=True)
@@ -665,43 +687,46 @@ class TextParserTest(unittest.TestCase):
         self.assertEqual(str(cm.exception),
                          'Invalid syntax at line 1, column 1: ">>!<<123"')
 
-    def test_parse_end_of_file(self):
+    def test_parse_end_of_file(self) -> None:
         class Parser(textparser.Parser):
 
-            def grammar(self):
-                return '__EOF__'
+            def grammar(self) -> Grammar:
+                return Grammar('__EOF__')
 
         self.assertEqual(Parser().parse('', match_sof=False), '__EOF__')
 
-    def test_grammar_none(self):
+    def test_grammar_none(self) -> None:
         class AnyAsNone(textparser.Pattern):
 
-            def match(self, tokens):
+            def match(self, tokens: _Tokens) -> MatchObject|_Mismatch:
                 tokens.get_value()
 
-                return None
+                # the cast is a bit hacky because Pattern.match() is
+                # not supposed to return None. (this should possibly
+                # return textparser.MISMATCH)
+                return cast('MatchObject', None)
 
         grammar = Grammar(AnyAsNone())
 
-        datas = [
+        datas: list[GrammarMatchSpec] = [
             (
                 [('NUMBER', '1')],
-                None
+                cast('MatchObject', None)
             )
         ]
 
         self.parse_and_assert_tree(grammar, datas)
 
-    def test_grammar_error(self):
+    def test_grammar_error(self) -> None:
         grammar = Grammar(NoMatch())
 
-        datas = [
+        datas: list[list[tuple[str, str]|tuple[str, str, int]]] = [
             [('NUMBER', '1', 3)],
             [('WORD', 'foo', 3)]
         ]
 
-        for tokens in datas:
-            tokens = tokenize(tokens)
+        for token_args in datas:
+            tokens = tokenize(token_args)
 
             with self.assertRaises(textparser.GrammarError) as cm:
                 grammar.parse(tokens)
@@ -710,8 +735,9 @@ class TextParserTest(unittest.TestCase):
             self.assertEqual(str(cm.exception),
                              'Invalid syntax at offset 3.')
 
-    def test_tokenize_error(self):
-        datas = [
+    def test_tokenize_error(self) -> None:
+        # list of (offset, text, message) tuples
+        datas: list[tuple[int, str, str]] = [
             (2, 'hej', 'Invalid syntax at line 1, column 3: "he>>!<<j"'),
             (0, 'a\nb\n', 'Invalid syntax at line 1, column 1: ">>!<<a"'),
             (1, 'a\nb\n', 'Invalid syntax at line 1, column 2: "a>>!<<"'),
@@ -726,8 +752,9 @@ class TextParserTest(unittest.TestCase):
             self.assertEqual(cm.exception.offset, offset)
             self.assertEqual(str(cm.exception), message)
 
-    def test_create_token_re(self):
-        datas = [
+    def test_create_token_re(self) -> None:
+        # list of (TokenTree, expected_regex) tuples
+        datas: list[tuple[TokenizeItems, str]] = [
             (
                 [('A', r'a')],
                 '(?P<A>a)'
@@ -744,17 +771,17 @@ class TextParserTest(unittest.TestCase):
                              [Token(kind='__SOF__', value='__SOF__', offset=0)])
             self.assertEqual(re_token, expected_re_token)
 
-    def test_parser(self):
+    def test_parser(self) -> None:
         class Parser(textparser.Parser):
 
-            def keywords(self):
-                return set([
+            def keywords(self) -> set[str]:
+                return {
                     'IF',
                     'A',
                     'B'
-                ])
+                }
 
-            def token_specs(self):
+            def token_specs(self) -> list[tuple[str, str]|tuple[str,str,str]]:
                 return [
                     ('SKIP',                r'[ \r\n\t]+'),
                     ('NUMBER',              r'-?\d+(\.\d+)?([eE][+-]?\d+)?'),
@@ -764,17 +791,17 @@ class TextParserTest(unittest.TestCase):
                     ('MISMATCH',            r'.')
                 ]
 
-            def grammar(self):
-                return Sequence(
+            def grammar(self) -> Grammar:
+                return Grammar(Sequence(
                     'IF',
                     Optional(choice('A', 'B')),
                     'ESCAPED_STRING',
                     'WORD',
                     Optional(choice(DelimitedList('ESCAPED_STRING'),
                                     ZeroOrMore('NUMBER'))),
-                    '.')
+                    '.'))
 
-        datas = [
+        datas: list[tuple[str, MatchObject, MatchObject]] = [
             (
                 'IF "foo" bar .',
                 ['IF', [], '"foo"', 'bar', [[]], '.'],
@@ -814,10 +841,10 @@ class TextParserTest(unittest.TestCase):
             tree = Parser().parse(text, token_tree=True)
             self.assertEqual(tree, expected_token_tree)
 
-    def test_parser_default_keywords(self):
+    def test_parser_default_keywords(self) -> None:
         class Parser(textparser.Parser):
 
-            def token_specs(self):
+            def token_specs(self) -> list[tuple[str, str]|tuple[str,str,str]]:
                 return [
                     ('SKIP',                r'[ \r\n\t]+'),
                     ('NUMBER',              r'-?\d+(\.\d+)?([eE][+-]?\d+)?'),
@@ -827,17 +854,18 @@ class TextParserTest(unittest.TestCase):
                     ('MISMATCH',            r'.')
                 ]
 
-            def grammar(self):
-                return Sequence(
+            def grammar(self) -> Grammar:
+                return Grammar(Sequence(
                     'WORD',
                     Optional('WORD'),
                     'ESCAPED_STRING',
                     'WORD',
                     Optional(choice(DelimitedList('ESCAPED_STRING'),
                                     ZeroOrMore('NUMBER'))),
-                    '.')
+                    '.'))
 
-        datas = [
+        # list of (input_string, expected_flat_match, expected_tree_match) tuples
+        datas: list[tuple[str, MatchObject, MatchObject]] = [
             (
                 'IF "foo" bar .',
                 ['IF', [], '"foo"', 'bar', [[]], '.'],
@@ -877,7 +905,7 @@ class TextParserTest(unittest.TestCase):
             tree = Parser().parse(text, token_tree=True)
             self.assertEqual(tree, expected_token_tree)
 
-    def test_parser_bare(self):
+    def test_parser_bare(self) -> None:
         class Parser(textparser.Parser):
 
             pass
@@ -887,26 +915,26 @@ class TextParserTest(unittest.TestCase):
 
         self.assertEqual(str(cm.exception), 'No grammar defined.')
 
-    def test_parser_default_token_specs(self):
+    def test_parser_default_token_specs(self) -> None:
         class Parser(textparser.Parser):
 
-            def grammar(self):
-                return 'WORD'
+            def grammar(self) -> Grammar:
+                return Grammar('WORD')
 
         tree = Parser().parse('foo')
         self.assertEqual(tree, 'foo')
 
-    def test_parser_tokenize_mismatch(self):
+    def test_parser_tokenize_mismatch(self) -> None:
         class Parser(textparser.Parser):
 
-            def token_specs(self):
+            def token_specs(self) -> list[tuple[str, str]|tuple[str,str,str]]:
                 return [
                     ('SKIP',                r'[ \r\n\t]+'),
                     ('NUMBER',              r'-?\d+(\.\d+)?([eE][+-]?\d+)?'),
                     ('MISMATCH',            r'.')
                 ]
 
-            def grammar(self):
+            def grammar(self) -> Grammar:
                 return Grammar('NUMBER')
 
         with self.assertRaises(textparser.ParseError) as cm:
@@ -918,17 +946,17 @@ class TextParserTest(unittest.TestCase):
         self.assertEqual(str(cm.exception),
                          'Invalid syntax at line 2, column 3: "34>>!<<foo"')
 
-    def test_parser_grammar_mismatch(self):
+    def test_parser_grammar_mismatch(self) -> None:
         class Parser(textparser.Parser):
 
-            def tokenize(self, _text):
+            def tokenize(self, _text: str) -> list[Token]:
                 return tokenize([
                     ('NUMBER', '1.45', 0),
                     ('NUMBER', '2', 5)
                 ])
 
-            def grammar(self):
-                return Sequence('NUMBER', 'WORD')
+            def grammar(self) -> Grammar:
+                return Grammar(Sequence('NUMBER', 'WORD'))
 
         with self.assertRaises(textparser.ParseError) as cm:
             Parser().parse('1.45 2')
@@ -939,18 +967,18 @@ class TextParserTest(unittest.TestCase):
         self.assertEqual(str(cm.exception),
                          'Invalid syntax at line 1, column 6: "1.45 >>!<<2"')
 
-    def test_parser_grammar_mismatch_choice_max(self):
+    def test_parser_grammar_mismatch_choice_max(self) -> None:
         class Parser(textparser.Parser):
 
-            def __init__(self, tokens):
+            def __init__(self, tokens: TokenizeItems) -> None:
                 self._tokens = tokens
 
-            def tokenize(self, _text):
+            def tokenize(self, _text: str) -> list[Token]:
                 return tokenize(self._tokens, add_eof_token=False)
 
-            def grammar(self):
-                return Choice(Sequence('NUMBER', 'WORD'),
-                              'WORD')
+            def grammar(self) -> Grammar:
+                return Grammar(Choice(Sequence('NUMBER', 'WORD'),
+                                      'WORD'))
 
         Data = namedtuple('Data',
                           [
@@ -995,13 +1023,13 @@ class TextParserTest(unittest.TestCase):
             self.assertEqual(cm.exception.column, column)
             self.assertEqual(str(cm.exception), message)
 
-    def test_parse_error(self):
+    def test_parse_error(self) -> None:
         class Parser(textparser.Parser):
 
-            def tokenize(self, text):
+            def tokenize(self, text: str) -> list[Token]:
                 raise TokenizeError(text, 5)
 
-            def grammar(self):
+            def grammar(self) -> Grammar:
                 return Grammar(Sequence('NUMBER', 'WORD'))
 
         with self.assertRaises(textparser.ParseError) as cm:
@@ -1014,7 +1042,7 @@ class TextParserTest(unittest.TestCase):
         self.assertEqual(str(cm.exception),
                          'Invalid syntax at line 2, column 3: "34>>!<<56"')
 
-    def test_markup_line(self):
+    def test_markup_line(self) -> None:
         datas = [
             (0, '>>!<<0', None),
             (1, '0>>!<<', None),
@@ -1037,7 +1065,7 @@ class TextParserTest(unittest.TestCase):
 
             self.assertEqual(text, line)
 
-    def test_replace_blocks(self):
+    def test_replace_blocks(self) -> None:
         datas = [
             ('{}', '{}'),
             ('{{}}', '{  }'),
@@ -1049,7 +1077,7 @@ class TextParserTest(unittest.TestCase):
             new = replace_blocks(old)
             self.assertEqual(new, expected)
 
-    def test_replace_blocks_start_end(self):
+    def test_replace_blocks_start_end(self) -> None:
         datas = [
             ('1[a]2[b]3', '1[ ]2[ ]3', '[', ']'),
             ('1{a}2{b}3', '1{ }2{ }3', '{', '}'),
@@ -1061,13 +1089,13 @@ class TextParserTest(unittest.TestCase):
             new = replace_blocks(old, start, end)
             self.assertEqual(new, expected)
 
-    def test_any_zero_or_more(self):
+    def test_any_zero_or_more(self) -> None:
         class Parser(textparser.Parser):
 
-            def keywords(self):
-                return ['interesting_group']
+            def keywords(self) -> set[str]:
+                return {'interesting_group'}
 
-            def token_specs(self):
+            def token_specs(self) -> list[tuple[str,str]|tuple[str,str,str]]:
                 return [
                     ('SKIP',        r'[ \r\n\t]+'),
                     ('WORD',        r'[A-Za-z0-9_]+'),
@@ -1077,16 +1105,16 @@ class TextParserTest(unittest.TestCase):
                     ('EQUAL',       '=', r'='),
                 ]
 
-            def grammar(self):
+            def grammar(self) -> Grammar:
                 interesting_group = textparser.Sequence(
                     'interesting_group', '{',
                     ZeroOrMore(Sequence('WORD', '=', 'WORD', ';')),
                     '}',
                     ';')
 
-                return Sequence(AnyUntil('interesting_group'),
-                                interesting_group,
-                                ZeroOrMore(Any()))
+                return Grammar(Sequence(AnyUntil('interesting_group'),
+                                        interesting_group,
+                                        ZeroOrMore(Any())))
 
 
         text = '''
@@ -1105,6 +1133,7 @@ class TextParserTest(unittest.TestCase):
         '''
 
         tree = Parser().parse(text)
+        assert isinstance(tree, list)
         self.assertEqual(tree[1],
                          [
                              'interesting_group',
@@ -1116,11 +1145,11 @@ class TextParserTest(unittest.TestCase):
                              '}',
                              ';'])
 
-    def test_error_picklable(self):
+    def test_error_picklable(self) -> None:
         class Parser(textparser.Parser):
 
-            def grammar(self):
-                return Sequence('__EOF__')
+            def grammar(self) -> Grammar:
+                return Grammar(Sequence('__EOF__'))
 
         try:
             Parser().parse('123', match_sof=True)

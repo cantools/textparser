@@ -1,15 +1,16 @@
 # A text parser.
 
+import collections.abc
 import re
-from collections import namedtuple
+import typing
+from dataclasses import dataclass
 from operator import itemgetter
-
 
 __author__ = 'Erik Moqvist'
 __version__ = '0.24.0'
 
 
-class _Mismatch(object):
+class _Mismatch:
     pass
 
 
@@ -18,103 +19,114 @@ MISMATCH = _Mismatch()
 
 """
 
+@dataclass(slots=True, frozen=True, eq=True)
+class Token:
+    kind: str
+    value: str | None
+    offset: int
 
-class _String(object):
-    """Matches a specific token kind.
+class _Tokens:
 
-    """
-
-    def __init__(self, kind):
-        self.kind = kind
-
-    def match(self, tokens):
-        if self.kind == tokens.peek().kind:
-            return tokens.get_value()
-        else:
-            return MISMATCH
-
-
-class _Tokens(object):
-
-    def __init__(self, tokens):
+    def __init__(self, tokens: list[Token]):
         self._tokens = tokens
         self._pos = 0
         self._max_pos = -1
-        self._stack = []
+        self._stack: list[int] = []
 
-    def get_value(self):
+    def get_value(self) -> Token | str:
         pos = self._pos
         self._pos += 1
 
         return self._tokens[pos]
 
-    def peek(self):
+    def peek(self) -> Token:
         return self._tokens[self._pos]
 
-    def peek_max(self):
+    def peek_max(self) -> Token:
         pos = self._pos
 
-        if self._max_pos > pos:
-            pos = self._max_pos
+        pos = max(pos, self._max_pos)
 
         if pos >= len(self._tokens):
             return self._tokens[-1]
         else:
             return self._tokens[pos]
 
-    def save(self):
+    def save(self) -> None:
         self._stack.append(self._pos)
 
-    def restore(self):
+    def restore(self) -> None:
         self._pos = self._stack.pop()
 
-    def update(self):
+    def update(self) -> None:
         self._stack[-1] = self._pos
 
-    def mark_max_restore(self):
-        if self._pos > self._max_pos:
-            self._max_pos = self._pos
+    def mark_max_restore(self) -> None:
+        self._max_pos = max(self._max_pos, self._pos)
 
         self._pos = self._stack.pop()
 
-    def mark_max_load(self):
-        if self._pos > self._max_pos:
-            self._max_pos = self._pos
+    def mark_max_load(self) -> None:
+        self._max_pos = max(self._max_pos, self._pos)
 
         self._pos = self._stack[-1]
 
-    def drop(self):
+    def drop(self) -> None:
         self._stack.pop()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self._tokens[self._pos:self._pos + 2])
 
+MatchObject = list["MatchObject"] | dict[str, list["MatchObject"]] | tuple[str,"MatchObject"] | Token | str
+
+class Pattern:
+    """Base class of all patterns.
+
+    """
+
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+        """Returns :data:`~textparser.MISMATCH` on mismatch, and anything else
+        on match.
+
+        """
+
+        raise NotImplementedError('To be implemented by subclasses.')
+
+class _String(Pattern):
+    """Matches a specific token kind.
+
+    """
+
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+        if self.kind == tokens.peek().kind:
+            return tokens.get_value()
+        else:
+            return MISMATCH
 
 class _StringTokens(_Tokens):
 
-    def get_value(self):
+    def get_value(self) -> Token | str:
         pos = self._pos
         self._pos += 1
 
-        return self._tokens[pos].value
+        return typing.cast('str', self._tokens[pos].value)
 
 
-def _wrap_string(item):
+def _wrap_string(item: Pattern | str) -> Pattern:
     if isinstance(item, str):
         item = _String(item)
 
     return item
 
-
-def _wrap_strings(items):
+def _wrap_strings(items: collections.abc.Sequence[Pattern | str]) -> list[Pattern]:
     return [_wrap_string(item) for item in items]
 
 
-def _format_invalid_syntax(text, offset):
-    return 'Invalid syntax at line {}, column {}: "{}"'.format(
-        line(text, offset),
-        column(text, offset),
-        markup_line(text, offset))
+def _format_invalid_syntax(text: str, offset: int) -> str:
+    return f'Invalid syntax at line {line(text, offset)}, column {column(text, offset)}: "{markup_line(text, offset)}"'
 
 
 class Error(Exception):
@@ -122,7 +134,6 @@ class Error(Exception):
 
     """
 
-    pass
 
 
 class TokenizeError(Error):
@@ -131,14 +142,14 @@ class TokenizeError(Error):
 
     """
 
-    def __init__(self, text, offset):
+    def __init__(self, text: str, offset: int) -> None:
         self._text = text
         self._offset = offset
         message = _format_invalid_syntax(text, offset)
-        super(TokenizeError, self).__init__(message)
+        super().__init__(message)
 
     @property
-    def text(self):
+    def text(self) -> str:
         """The input text to the tokenizer.
 
         """
@@ -146,7 +157,7 @@ class TokenizeError(Error):
         return self._text
 
     @property
-    def offset(self):
+    def offset(self) -> int:
         """Offset into the text where the tokenizer failed.
 
         """
@@ -160,13 +171,13 @@ class GrammarError(Error):
 
     """
 
-    def __init__(self, offset):
+    def __init__(self, offset: int) -> None:
         self._offset = offset
-        message = 'Invalid syntax at offset {}.'.format(offset)
-        super(GrammarError, self).__init__(message)
+        message = f'Invalid syntax at offset {offset}.'
+        super().__init__(message)
 
     @property
-    def offset(self):
+    def offset(self) -> int:
         """Offset into the text where the parser failed.
 
         """
@@ -179,16 +190,16 @@ class ParseError(Error):
 
     """
 
-    def __init__(self, text, offset):
+    def __init__(self, text: str, offset: int):
         self._text = text
         self._offset = offset
         self._line = line(text, offset)
         self._column = column(text, offset)
         message = _format_invalid_syntax(text, offset)
-        super(ParseError, self).__init__(message)
+        super().__init__(message)
 
     @property
-    def text(self):
+    def text(self) -> str:
         """The input text to the parser.
 
         """
@@ -196,7 +207,7 @@ class ParseError(Error):
         return self._text
 
     @property
-    def offset(self):
+    def offset(self) -> int:
         """Offset into the text where the parser failed.
 
         """
@@ -204,7 +215,7 @@ class ParseError(Error):
         return self._offset
 
     @property
-    def line(self):
+    def line(self) -> int:
         """Line where the parser failed.
 
         """
@@ -212,50 +223,32 @@ class ParseError(Error):
         return self._line
 
     @property
-    def column(self):
+    def column(self) -> int:
         """Column where the parser failed.
 
         """
 
         return self._column
 
-    def __reduce__(self):
+    def __reduce__(self) -> tuple[typing.Any, ...]:
         """Adds pickling support."""
         return type(self), (self._text, self._offset), {}
-
-
-Token = namedtuple('Token', ['kind', 'value', 'offset'])
-
-
-class Pattern(object):
-    """Base class of all patterns.
-
-    """
-
-    def match(self, tokens):
-        """Returns :data:`~textparser.MISMATCH` on mismatch, and anything else
-        on match.
-
-        """
-
-        raise NotImplementedError('To be implemented by subclasses.')
-
 
 class Sequence(Pattern):
     """Matches a sequence of patterns. Becomes a list in the parse tree.
 
     """
 
-    def __init__(self, *patterns):
+    def __init__(self, *patterns: Pattern | str) -> None:
         self.patterns = _wrap_strings(patterns)
 
-    def match(self, tokens):
-        matched = []
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+        matched: list[MatchObject] = []
 
         for pattern in self.patterns:
             mo = pattern.match(tokens)
 
-            if mo is MISMATCH:
+            if isinstance(mo, _Mismatch):
                 return MISMATCH
 
             matched.append(mo)
@@ -269,17 +262,17 @@ class Choice(Pattern):
 
     """
 
-    def __init__(self, *patterns):
+    def __init__(self, *patterns: Pattern | str) -> None:
         self._patterns = _wrap_strings(patterns)
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         tokens.save()
 
         for pattern in self._patterns:
             tokens.mark_max_load()
             mo = pattern.match(tokens)
 
-            if mo is not MISMATCH:
+            if not isinstance(mo, _Mismatch):
                 tokens.drop()
 
                 return mo
@@ -288,6 +281,55 @@ class Choice(Pattern):
 
         return MISMATCH
 
+class Tag(Pattern):
+    """Tags any matched `pattern` with name `name`. Becomes a two-tuple of
+    `name` and match in the parse tree.
+
+    """
+
+    def __init__(self, name: str, pattern: Pattern | str) -> None:
+        self._name = name
+        self._pattern = _wrap_string(pattern)
+
+    @property
+    def pattern(self) -> Pattern:
+        return self._pattern
+
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+        mo = self._pattern.match(tokens)
+
+        if not isinstance(mo, _Mismatch):
+            return (self._name, mo)
+        else:
+            return MISMATCH
+
+
+class Forward(Pattern):
+    """Forward declaration of a pattern.
+
+    .. code-block:: python
+
+       >>> foo = Forward()
+       >>> foo <<= Sequence('NUMBER')
+
+    """
+
+    def __init__(self) -> None:
+        self._pattern: Pattern | None = None
+
+    @property
+    def pattern(self) -> Pattern | None:
+        return self._pattern
+
+    def __ilshift__(self, other: Pattern | str) -> "Forward":
+        self._pattern = _wrap_string(other)
+
+        return self
+
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+        if self._pattern is not None:
+            return self._pattern.match(tokens)
+        return MISMATCH
 
 class ChoiceDict(Pattern):
     """Matches any of given patterns. The first token kind of all patterns
@@ -299,40 +341,42 @@ class ChoiceDict(Pattern):
 
     """
 
-    def __init__(self, *patterns):
-        self._patterns_map = {}
-        patterns = _wrap_strings(patterns)
+    def __init__(self, *patterns: Pattern | str) -> None:
+        self._patterns_map: dict[str, Pattern] = {}
+        wrapped_patterns = _wrap_strings(patterns)
 
-        for pattern in patterns:
+        for pattern in wrapped_patterns:
             self._check_pattern(pattern, pattern)
 
     @property
-    def patterns_map(self):
+    def patterns_map(self) -> dict[str, Pattern]:
         return self._patterns_map
 
-    def _check_pattern(self, inner, outer):
+    def _check_pattern(self, inner: Pattern, outer: Pattern) -> None:
         if isinstance(inner, _String):
             self._add_pattern(inner.kind, outer)
         elif isinstance(inner, Sequence):
             self._check_pattern(inner.patterns[0], outer)
         elif isinstance(inner, (Tag, Forward)):
+            if inner.pattern is None:
+                raise Error(
+                    f'No inner pattern defined for {type(inner)}.')
             self._check_pattern(inner.pattern, outer)
         elif isinstance(inner, ChoiceDict):
             for pattern in inner.patterns_map.values():
                 self._check_pattern(pattern, outer)
         else:
             raise Error(
-                'Unsupported pattern type {}.'.format(type(inner)))
+                f'Unsupported pattern type {type(inner)}.')
 
-    def _add_pattern(self, kind, pattern):
+    def _add_pattern(self, kind: str, pattern: Pattern) -> None:
         if kind in self._patterns_map:
             raise Error(
-                "First token kind must be unique, but {} isn't.".format(
-                    kind))
+                f"First token kind must be unique, but {kind} isn't.")
 
         self._patterns_map[kind] = pattern
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         kind = tokens.peek().kind
 
         if kind in self._patterns_map:
@@ -347,18 +391,18 @@ class Repeated(Pattern):
 
     """
 
-    def __init__(self, pattern, minimum=0):
+    def __init__(self, pattern: Pattern | str, minimum: int=0) -> None:
         self._pattern = _wrap_string(pattern)
         self._minimum = minimum
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         matched = []
         tokens.save()
 
         while True:
             mo = self._pattern.match(tokens)
 
-            if mo is MISMATCH:
+            if isinstance(mo, _Mismatch):
                 tokens.mark_max_restore()
                 break
 
@@ -381,22 +425,22 @@ class RepeatedDict(Repeated):
 
     """
 
-    def __init__(self, pattern, minimum=0, key=None):
-        super(RepeatedDict, self).__init__(pattern, minimum)
+    def __init__(self, pattern: Pattern | str, minimum: int=0, key: typing.Callable[[MatchObject], str] | None=None) -> None:
+        super().__init__(pattern, minimum)
 
         if key is None:
-            key = itemgetter(0)
+            key = typing.cast('typing.Callable[[MatchObject], str]', itemgetter(0))
 
         self._key = key
 
-    def match(self, tokens):
-        matched = {}
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+        matched: dict[str, list[MatchObject]] = {}
         tokens.save()
 
         while True:
             mo = self._pattern.match(tokens)
 
-            if mo is MISMATCH:
+            if isinstance(mo, _Mismatch):
                 tokens.mark_max_restore()
                 break
 
@@ -422,8 +466,8 @@ class ZeroOrMore(Repeated):
 
     """
 
-    def __init__(self, pattern):
-        super(ZeroOrMore, self).__init__(pattern, 0)
+    def __init__(self, pattern: Pattern | str) -> None:
+        super().__init__(pattern, 0)
 
 
 class ZeroOrMoreDict(RepeatedDict):
@@ -433,8 +477,8 @@ class ZeroOrMoreDict(RepeatedDict):
 
     """
 
-    def __init__(self, pattern, key=None):
-        super(ZeroOrMoreDict, self).__init__(pattern, 0, key)
+    def __init__(self, pattern: Pattern | str, key: typing.Callable[[MatchObject], str] | None=None) -> None:
+        super().__init__(pattern, 0, key)
 
 
 class OneOrMore(Repeated):
@@ -444,8 +488,8 @@ class OneOrMore(Repeated):
 
     """
 
-    def __init__(self, pattern):
-        super(OneOrMore, self).__init__(pattern, 1)
+    def __init__(self, pattern: Pattern | str) -> None:
+        super().__init__(pattern, 1)
 
 
 class OneOrMoreDict(RepeatedDict):
@@ -455,8 +499,8 @@ class OneOrMoreDict(RepeatedDict):
 
     """
 
-    def __init__(self, pattern, key=None):
-        super(OneOrMoreDict, self).__init__(pattern, 1, key)
+    def __init__(self, pattern: Pattern | str, key: typing.Callable[[MatchObject], str] | None=None) -> None:
+        super().__init__(pattern, 1, key)
 
 
 class DelimitedList(Pattern):
@@ -466,15 +510,15 @@ class DelimitedList(Pattern):
 
     """
 
-    def __init__(self, pattern, delim=','):
+    def __init__(self, pattern: Pattern | str, delim: str=',') -> None:
         self._pattern = _wrap_string(pattern)
         self._delim = _wrap_string(delim)
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         # First pattern.
         mo = self._pattern.match(tokens)
 
-        if mo is MISMATCH:
+        if isinstance(mo, _Mismatch):
             return MISMATCH
 
         matched = [mo]
@@ -484,13 +528,13 @@ class DelimitedList(Pattern):
             # Discard the delimiter.
             mo = self._delim.match(tokens)
 
-            if mo is MISMATCH:
+            if isinstance(mo, _Mismatch):
                 break
 
             # Pattern.
             mo = self._pattern.match(tokens)
 
-            if mo is MISMATCH:
+            if isinstance(mo, _Mismatch):
                 break
 
             matched.append(mo)
@@ -507,14 +551,14 @@ class Optional(Pattern):
 
     """
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: Pattern | str) -> None:
         self._pattern = _wrap_string(pattern)
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         tokens.save()
         mo = self._pattern.match(tokens)
 
-        if mo is MISMATCH:
+        if isinstance(mo, _Mismatch):
             tokens.mark_max_restore()
 
             return []
@@ -529,7 +573,7 @@ class Any(Pattern):
 
     """
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         if tokens.peek().kind == '__EOF__':
             return MISMATCH
         else:
@@ -542,17 +586,17 @@ class AnyUntil(Pattern):
 
     """
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: Pattern | str) -> None:
         self._pattern = _wrap_string(pattern)
 
-    def match(self, tokens):
-        matched = []
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+        matched: list[MatchObject] = []
 
         while True:
             tokens.save()
             mo = self._pattern.match(tokens)
 
-            if mo is not MISMATCH:
+            if not isinstance(mo, _Mismatch):
                 break
 
             tokens.restore()
@@ -569,15 +613,15 @@ class And(Pattern):
 
     """
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: Pattern | str) -> None:
         self._pattern = _wrap_string(pattern)
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         tokens.save()
         mo = self._pattern.match(tokens)
         tokens.restore()
 
-        if mo is MISMATCH:
+        if isinstance(mo, _Mismatch):
             return MISMATCH
         else:
             return []
@@ -591,15 +635,15 @@ class Not(Pattern):
 
     """
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: Pattern | str) -> None:
         self._pattern = _wrap_string(pattern)
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         tokens.save()
         mo = self._pattern.match(tokens)
         tokens.restore()
 
-        if mo is MISMATCH:
+        if isinstance(mo, _Mismatch):
             return []
         else:
             return MISMATCH
@@ -610,85 +654,36 @@ class NoMatch(Pattern):
 
     """
 
-    def match(self, tokens):
+    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
         return MISMATCH
 
-
-class Tag(Pattern):
-    """Tags any matched `pattern` with name `name`. Becomes a two-tuple of
-    `name` and match in the parse tree.
-
-    """
-
-    def __init__(self, name, pattern):
-        self._name = name
-        self._pattern = _wrap_string(pattern)
-
-    @property
-    def pattern(self):
-        return self._pattern
-
-    def match(self, tokens):
-        mo = self._pattern.match(tokens)
-
-        if mo is not MISMATCH:
-            return (self._name, mo)
-        else:
-            return MISMATCH
-
-
-class Forward(Pattern):
-    """Forward declaration of a pattern.
-
-    .. code-block:: python
-
-       >>> foo = Forward()
-       >>> foo <<= Sequence('NUMBER')
-
-    """
-
-    def __init__(self):
-        self._pattern = None
-
-    @property
-    def pattern(self):
-        return self._pattern
-
-    def __ilshift__(self, other):
-        self._pattern = _wrap_string(other)
-
-        return self
-
-    def match(self, tokens):
-        return self._pattern.match(tokens)
-
-
-class Grammar(object):
+class Grammar:
     """Creates a tree of given tokens using the grammar `grammar`.
 
     """
 
-    def __init__(self, grammar):
+    def __init__(self, grammar: Pattern | str) -> None:
+        self._root: Pattern
         if isinstance(grammar, str):
-            grammar = _wrap_string(grammar)
-
-        self._root = grammar
-
-    def parse(self, tokens, token_tree=False):
-        if token_tree:
-            tokens = _Tokens(tokens)
+            self._root = _wrap_string(grammar)
         else:
-            tokens = _StringTokens(tokens)
+            self._root = grammar
+
+    def parse(self, token_list: list[Token], token_tree: bool=False) -> MatchObject:
+        if token_tree:
+            tokens = _Tokens(token_list)
+        else:
+            tokens = _StringTokens(token_list)
 
         parsed = self._root.match(tokens)
 
-        if parsed is not MISMATCH and tokens.peek_max().kind == '__EOF__':
+        if not isinstance(parsed, _Mismatch) and tokens.peek_max().kind == '__EOF__':
             return parsed
         else:
             raise GrammarError(tokens.peek_max().offset)
 
 
-def choice(*patterns):
+def choice(*patterns: Pattern | str) -> Choice | ChoiceDict:
     """Returns an instance of the fastest choice class for given patterns
     `patterns`. It is recommended to use this function instead of
     instantiate :class:`~textparser.Choice` or
@@ -702,7 +697,7 @@ def choice(*patterns):
         return Choice(*patterns)
 
 
-def markup_line(text, offset, marker='>>!<<'):
+def markup_line(text: str, offset: int, marker: str='>>!<<') -> str:
     """Insert `marker` at `offset` into `text`, and return the marked
     line.
 
@@ -724,17 +719,17 @@ def markup_line(text, offset, marker='>>!<<'):
     return text[begin:offset] + marker + text[offset:end]
 
 
-def line(text, offset):
+def line(text: str, offset: int) -> int:
     return text[:offset].count('\n') + 1
 
 
-def column(text, offset):
+def column(text: str, offset: int) -> int:
     line_start = text.rfind('\n', 0, offset)
 
     return offset - line_start
 
 
-def tokenize_init(spec):
+def tokenize_init(spec: collections.abc.Sequence[tuple[str, str] | tuple[str, str, int]]) -> tuple[list[Token], str]:
     """Initialize a tokenizer. Should only be called by the
     :func:`~textparser.Parser.tokenize` method in the parser.
 
@@ -742,13 +737,13 @@ def tokenize_init(spec):
 
     tokens = [Token('__SOF__', '__SOF__', 0)]
     re_token = '|'.join([
-        '(?P<{}>{})'.format(name, regex) for name, regex in spec
+        f'(?P<{token_spec[0]}>{token_spec[1]})' for token_spec in spec
     ])
 
     return tokens, re_token
 
 
-class Parser(object):
+class Parser:
     """The abstract base class of all text parsers.
 
     .. code-block:: python
@@ -768,7 +763,8 @@ class Parser(object):
 
     """
 
-    def _unpack_token_specs(self):
+    def _unpack_token_specs(self) -> tuple[dict[str, str],
+                                           list[tuple[str,str]]]:
         names = {}
         specs = []
 
@@ -781,7 +777,7 @@ class Parser(object):
 
         return names, specs
 
-    def keywords(self):
+    def keywords(self) -> set[str]:
         """A set of keywords in the text.
 
         .. code-block:: python
@@ -793,7 +789,7 @@ class Parser(object):
 
         return set()
 
-    def token_specs(self):
+    def token_specs(self) -> list[tuple[str, str] | tuple[str, str, str]]:
         """The token specifications with token name, regular expression, and
         optionally a user friendly name.
 
@@ -813,7 +809,7 @@ class Parser(object):
             ('MISMATCH',            r'.')
         ]
 
-    def tokenize(self, text):
+    def tokenize(self, text: str) -> list[Token]:
         """Tokenize given string `text`, and return a list of tokens. Raises
         :class:`~textparser.TokenizeError` on failure.
 
@@ -830,6 +826,7 @@ class Parser(object):
 
         for mo in re.finditer(re_token, text, re.DOTALL):
             kind = mo.lastgroup
+            assert isinstance(kind, str)
 
             if kind == 'SKIP':
                 pass
@@ -848,7 +845,7 @@ class Parser(object):
 
         return tokens
 
-    def grammar(self):
+    def grammar(self) -> Grammar:
         """The text grammar is used to create a parse tree out of a list of
         tokens.
 
@@ -858,7 +855,7 @@ class Parser(object):
 
         raise NotImplementedError('No grammar defined.')
 
-    def parse(self, text, token_tree=False, match_sof=False):
+    def parse(self, text: str, token_tree: bool=False, match_sof:bool=False) -> _Mismatch | MatchObject:
         """Parse given string `text` and return the parse tree. Raises
         :class:`~textparser.ParseError` on failure.
 
@@ -888,12 +885,19 @@ class Parser(object):
                 if len(tokens) > 0 and tokens[0].kind == '__SOF__':
                     del tokens[0]
 
-            return Grammar(self.grammar()).parse(tokens, token_tree)
+            grammar = self.grammar()
+            if isinstance(grammar, Grammar):
+                return grammar.parse(tokens, token_tree)
+            else:
+                # used for compatibility with old user code from the
+                # pre-type hints era...
+                return Grammar(grammar).parse(tokens, token_tree)
+
         except (TokenizeError, GrammarError) as e:
-            raise ParseError(text, e.offset)
+            raise ParseError(text, e.offset) from e
 
 
-def replace_blocks(string, start='{', end='}'):
+def replace_blocks(string: str, start: str='{', end: str='}') -> str:
     """Replace all blocks starting with `start` and ending with `end` with
     spaces (not including `start` and `end`).
 
@@ -903,7 +907,7 @@ def replace_blocks(string, start='{', end='}'):
     begin = 0
     depth = 0
     start_length = len(start)
-    pattern = r'({}|{})'.format(re.escape(start), re.escape(end))
+    pattern = rf'({re.escape(start)}|{re.escape(end)})'
 
     for mo in re.finditer(pattern, string):
         pos = mo.start()

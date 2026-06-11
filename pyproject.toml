@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=68", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "textparser"
+authors = [
+    {name = "Erik Moqvist"},
+]
+description = "A text parser library for python."
+readme = "README.rst"
+requires-python = ">=3.10"
+keywords = ['parser', 'parsing']
+license = { text = "MIT" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+]
+dynamic = ["version"]
+
+[tool.setuptools_scm]
+# can be empty if no extra settings are needed, presence enables setuptools_scm
+
+[project.urls]
+homepage = "https://github.com/cantools/textparser"
+documentation = "https://textparser.readthedocs.io/"
+repository = "https://github.com/cantools/textparser"
+
+[project.optional-dependencies]
+examples = [
+    "lark-parser",
+    "pyparsing",
+    "parsita",
+    "funcparserlib",
+    "parsy",
+    "parsimonious",
+    "textx",
+]
+test = [
+     "mypy >= 2.1",
+     "ruff >= 0.15.16",
+     "pytest >= 9.0",
+     "coverage >= 7.14",
+]
+
+[tool.setuptools]
+packages = ["textparser"]
+
+[tool.mypy]
+show_error_codes = true
+warn_return_any = true
+warn_unused_configs = true
+no_implicit_optional = true
+disallow_incomplete_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+exclude = [
+	'build',
+]
+
+[tool.ruff]
+line-length = 80
+lint.extend-select = [
+    "A",    # flake8-builtins
+    "B",    # pyflakes-bugbear
+    "C4",   # flake8-comprehensions
+    "E",    # pycodestyle Error
+    "F",    # pyflakes
+    "FURB", # refurb
+    "I",    # isort
+    "PIE",  # flake8-pie
+    "PL",   # pylint
+    "RUF",  # Ruff-specific rules
+    "TCH",  # flake8-type-checking
+    "UP",   # pyupgrade
+    "W",    # pycodestyle Warning
+]
+lint.ignore = [
+    "E501",    # line too long
+    "F541",    # f-string-missing-placeholders
+    "PLR09",   # too-many-this, too-many-that
+    "PLR2004", # magic-value-comparison
+    "PLW1641", # eq-without-hash
+    "PLW2901", # redefined-loop-name
+    "RUF012",  # mutable-class-default
+]
+lint.isort.known-first-party = ["textparser"]
