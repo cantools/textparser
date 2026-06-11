@@ -16,13 +16,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
-    "lark-parser",
-    "pyparsing",
-    "parsita",
-    "funcparserlib",
-    "parsy",
-    "parsimonious",
-    "textx",
 ]
 dynamic = ["version"]
 
@@ -35,6 +28,15 @@ documentation = "https://textparser.readthedocs.io/"
 repository = "https://github.com/cantools/textparser"
 
 [project.optional-dependencies]
+examples = [
+    "lark-parser",
+    "pyparsing",
+    "parsita",
+    "funcparserlib",
+    "parsy",
+    "parsimonious",
+    "textx",
+]
 test = [
      "mypy >= 2.1",
      "ruff >= 0.15.16",
