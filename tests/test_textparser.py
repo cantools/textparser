@@ -4,35 +4,36 @@ import unittest
 from collections import namedtuple
 from typing import cast
 
-
 import textparser
-from textparser import MatchObject
-from textparser import Grammar
-from textparser import Pattern
-from textparser import Sequence
-from textparser import Choice
-from textparser import choice
-from textparser import ChoiceDict
-from textparser import ZeroOrMore
-from textparser import ZeroOrMoreDict
-from textparser import OneOrMore
-from textparser import OneOrMoreDict
-from textparser import DelimitedList
-from textparser import Token
-from textparser import _Tokens
-from textparser import TokenizeError
-from textparser import tokenize_init
-from textparser import _Mismatch
-from textparser import Any
-from textparser import AnyUntil
-from textparser import Optional
-from textparser import Tag
-from textparser import Forward
-from textparser import NoMatch
-from textparser import Not
-from textparser import And
-from textparser import markup_line
-from textparser import replace_blocks
+from textparser import (
+    And,
+    Any,
+    AnyUntil,
+    Choice,
+    ChoiceDict,
+    DelimitedList,
+    Forward,
+    Grammar,
+    MatchObject,
+    NoMatch,
+    Not,
+    OneOrMore,
+    OneOrMoreDict,
+    Optional,
+    Pattern,
+    Sequence,
+    Tag,
+    Token,
+    TokenizeError,
+    ZeroOrMore,
+    ZeroOrMoreDict,
+    _Mismatch,
+    _Tokens,
+    choice,
+    markup_line,
+    replace_blocks,
+    tokenize_init,
+)
 
 # list of tuples containing the arguments for the Token class. Used to
 # create a list of Token objects.
@@ -138,7 +139,7 @@ class TextParserTest(unittest.TestCase):
                 # the cast is necessary because mypy does not
                 # recognize (str, MatchObject) tuples as MatchObject,
                 # even though it should...
-                cast(MatchObject, ('foo', ['m']))
+                cast('MatchObject', ('foo', ['m']))
             ),
             (
                 [('NUMBER', '5')],
@@ -311,7 +312,7 @@ class TextParserTest(unittest.TestCase):
     def test_grammar_one_or_more_mismatch(self) -> None:
         grammar = Grammar(OneOrMore('WORD'))
 
-        datas = cast(list[GrammarMismatchSpec], [
+        datas = cast('list[GrammarMismatchSpec]', [
             (
                 []
                 , -1
@@ -350,7 +351,7 @@ class TextParserTest(unittest.TestCase):
     def test_grammar_one_or_more_dict_mismatch(self) -> None:
         grammar = Grammar(OneOrMoreDict(Sequence('WORD', 'NUMBER')))
 
-        datas = cast(list[GrammarMismatchSpec], [
+        datas = cast('list[GrammarMismatchSpec]', [
             (
                 [('WORD', 'foo', 5)],
                 -1
@@ -469,7 +470,7 @@ class TextParserTest(unittest.TestCase):
                     choice(DelimitedList('STRING'), ZeroOrMore('NUMBER')), '.'),
             '.')))
 
-        datas = cast(list[GrammarMismatchSpec], [
+        datas = cast('list[GrammarMismatchSpec]', [
             (
                 [
                     ('IF', 'IF', 1),
@@ -575,15 +576,15 @@ class TextParserTest(unittest.TestCase):
         datas: list[GrammarMatchSpec] = [
             (
                 [('WORD', 'bar')],
-                cast(MatchObject, ('a', ('b', ('c', 'bar'))))
+                cast('MatchObject', ('a', ('b', ('c', 'bar'))))
             ),
             (
                 [('NUMBER', '1')],
-                cast(MatchObject, ('a', ('b', ('d', ['1']))))
+                cast('MatchObject', ('a', ('b', ('d', ['1']))))
             ),
             (
                 [],
-                cast(MatchObject, ('a', ('b', ('d', []))))
+                cast('MatchObject', ('a', ('b', ('d', []))))
             )
         ]
 
@@ -703,14 +704,14 @@ class TextParserTest(unittest.TestCase):
                 # the cast is a bit hacky because Pattern.match() is
                 # not supposed to return None. (this should possibly
                 # return textparser.MISMATCH)
-                return cast(MatchObject, None)
+                return cast('MatchObject', None)
 
         grammar = Grammar(AnyAsNone())
 
         datas: list[GrammarMatchSpec] = [
             (
                 [('NUMBER', '1')],
-                cast(MatchObject, None)
+                cast('MatchObject', None)
             )
         ]
 
@@ -774,11 +775,11 @@ class TextParserTest(unittest.TestCase):
         class Parser(textparser.Parser):
 
             def keywords(self) -> set[str]:
-                return set([
+                return {
                     'IF',
                     'A',
                     'B'
-                ])
+                }
 
             def token_specs(self) -> list[tuple[str, str]|tuple[str,str,str]]:
                 return [
@@ -1092,7 +1093,7 @@ class TextParserTest(unittest.TestCase):
         class Parser(textparser.Parser):
 
             def keywords(self) -> set[str]:
-                return set(['interesting_group'])
+                return {'interesting_group'}
 
             def token_specs(self) -> list[tuple[str,str]|tuple[str,str,str]]:
                 return [

@@ -1,9 +1,8 @@
 # A text parser.
 
-import re
 import collections.abc
+import re
 import typing
-
 from dataclasses import dataclass
 from operator import itemgetter
 
@@ -46,8 +45,7 @@ class _Tokens:
     def peek_max(self) -> Token:
         pos = self._pos
 
-        if self._max_pos > pos:
-            pos = self._max_pos
+        pos = max(pos, self._max_pos)
 
         if pos >= len(self._tokens):
             return self._tokens[-1]
@@ -64,14 +62,12 @@ class _Tokens:
         self._stack[-1] = self._pos
 
     def mark_max_restore(self) -> None:
-        if self._pos > self._max_pos:
-            self._max_pos = self._pos
+        self._max_pos = max(self._max_pos, self._pos)
 
         self._pos = self._stack.pop()
 
     def mark_max_load(self) -> None:
-        if self._pos > self._max_pos:
-            self._max_pos = self._pos
+        self._max_pos = max(self._max_pos, self._pos)
 
         self._pos = self._stack[-1]
 
@@ -116,7 +112,7 @@ class _StringTokens(_Tokens):
         pos = self._pos
         self._pos += 1
 
-        return typing.cast(str, self._tokens[pos].value)
+        return typing.cast('str', self._tokens[pos].value)
 
 
 def _wrap_string(item: Pattern | str) -> Pattern:
@@ -130,10 +126,7 @@ def _wrap_strings(items: collections.abc.Sequence[Pattern | str]) -> list[Patter
 
 
 def _format_invalid_syntax(text: str, offset: int) -> str:
-    return 'Invalid syntax at line {}, column {}: "{}"'.format(
-        line(text, offset),
-        column(text, offset),
-        markup_line(text, offset))
+    return f'Invalid syntax at line {line(text, offset)}, column {column(text, offset)}: "{markup_line(text, offset)}"'
 
 
 class Error(Exception):
@@ -141,7 +134,6 @@ class Error(Exception):
 
     """
 
-    pass
 
 
 class TokenizeError(Error):
@@ -154,7 +146,7 @@ class TokenizeError(Error):
         self._text = text
         self._offset = offset
         message = _format_invalid_syntax(text, offset)
-        super(TokenizeError, self).__init__(message)
+        super().__init__(message)
 
     @property
     def text(self) -> str:
@@ -181,8 +173,8 @@ class GrammarError(Error):
 
     def __init__(self, offset: int) -> None:
         self._offset = offset
-        message = 'Invalid syntax at offset {}.'.format(offset)
-        super(GrammarError, self).__init__(message)
+        message = f'Invalid syntax at offset {offset}.'
+        super().__init__(message)
 
     @property
     def offset(self) -> int:
@@ -204,7 +196,7 @@ class ParseError(Error):
         self._line = line(text, offset)
         self._column = column(text, offset)
         message = _format_invalid_syntax(text, offset)
-        super(ParseError, self).__init__(message)
+        super().__init__(message)
 
     @property
     def text(self) -> str:
@@ -368,20 +360,19 @@ class ChoiceDict(Pattern):
         elif isinstance(inner, (Tag, Forward)):
             if inner.pattern is None:
                 raise Error(
-                    'No inner pattern defined for {}.'.format(type(inner)))
+                    f'No inner pattern defined for {type(inner)}.')
             self._check_pattern(inner.pattern, outer)
         elif isinstance(inner, ChoiceDict):
             for pattern in inner.patterns_map.values():
                 self._check_pattern(pattern, outer)
         else:
             raise Error(
-                'Unsupported pattern type {}.'.format(type(inner)))
+                f'Unsupported pattern type {type(inner)}.')
 
     def _add_pattern(self, kind: str, pattern: Pattern) -> None:
         if kind in self._patterns_map:
             raise Error(
-                "First token kind must be unique, but {} isn't.".format(
-                    kind))
+                f"First token kind must be unique, but {kind} isn't.")
 
         self._patterns_map[kind] = pattern
 
@@ -435,10 +426,10 @@ class RepeatedDict(Repeated):
     """
 
     def __init__(self, pattern: Pattern | str, minimum: int=0, key: typing.Callable[[MatchObject], str] | None=None) -> None:
-        super(RepeatedDict, self).__init__(pattern, minimum)
+        super().__init__(pattern, minimum)
 
         if key is None:
-            key = typing.cast(typing.Callable[[MatchObject], str], itemgetter(0))
+            key = typing.cast('typing.Callable[[MatchObject], str]', itemgetter(0))
 
         self._key = key
 
@@ -476,7 +467,7 @@ class ZeroOrMore(Repeated):
     """
 
     def __init__(self, pattern: Pattern | str) -> None:
-        super(ZeroOrMore, self).__init__(pattern, 0)
+        super().__init__(pattern, 0)
 
 
 class ZeroOrMoreDict(RepeatedDict):
@@ -487,7 +478,7 @@ class ZeroOrMoreDict(RepeatedDict):
     """
 
     def __init__(self, pattern: Pattern | str, key: typing.Callable[[MatchObject], str] | None=None) -> None:
-        super(ZeroOrMoreDict, self).__init__(pattern, 0, key)
+        super().__init__(pattern, 0, key)
 
 
 class OneOrMore(Repeated):
@@ -498,7 +489,7 @@ class OneOrMore(Repeated):
     """
 
     def __init__(self, pattern: Pattern | str) -> None:
-        super(OneOrMore, self).__init__(pattern, 1)
+        super().__init__(pattern, 1)
 
 
 class OneOrMoreDict(RepeatedDict):
@@ -509,7 +500,7 @@ class OneOrMoreDict(RepeatedDict):
     """
 
     def __init__(self, pattern: Pattern | str, key: typing.Callable[[MatchObject], str] | None=None) -> None:
-        super(OneOrMoreDict, self).__init__(pattern, 1, key)
+        super().__init__(pattern, 1, key)
 
 
 class DelimitedList(Pattern):
@@ -746,7 +737,7 @@ def tokenize_init(spec: collections.abc.Sequence[tuple[str, str] | tuple[str, st
 
     tokens = [Token('__SOF__', '__SOF__', 0)]
     re_token = '|'.join([
-        '(?P<{}>{})'.format(token_spec[0], token_spec[1]) for token_spec in spec
+        f'(?P<{token_spec[0]}>{token_spec[1]})' for token_spec in spec
     ])
 
     return tokens, re_token
@@ -903,7 +894,7 @@ class Parser:
                 return Grammar(grammar).parse(tokens, token_tree)
 
         except (TokenizeError, GrammarError) as e:
-            raise ParseError(text, e.offset)
+            raise ParseError(text, e.offset) from e
 
 
 def replace_blocks(string: str, start: str='{', end: str='}') -> str:
@@ -916,7 +907,7 @@ def replace_blocks(string: str, start: str='{', end: str='}') -> str:
     begin = 0
     depth = 0
     start_length = len(start)
-    pattern = r'({}|{})'.format(re.escape(start), re.escape(end))
+    pattern = rf'({re.escape(start)}|{re.escape(end)})'
 
     for mo in re.finditer(pattern, string):
         pos = mo.start()
