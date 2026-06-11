@@ -27,10 +27,10 @@ jobs:
         python -m unittest
     - name: Static type checking (mypy)
       run: |
-        python -m mypy --strict textparser.py tests
+        python -m mypy --strict textparser tests
     - name: Linting (ruff)
       run: |
-        ruff check textparser.py tests
+        ruff check textparser tests
 
   release:
     needs: [test]
