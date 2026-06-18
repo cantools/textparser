@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from operator import itemgetter
 
 __author__ = 'Erik Moqvist'
-__version__ = '0.24.0'
+from .version import __version__  # noqa: F401
 
 
 class _Mismatch:

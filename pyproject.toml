@@ -11,16 +11,13 @@ description = "A text parser library for python."
 readme = "README.rst"
 requires-python = ">=3.10"
 keywords = ['parser', 'parsing']
-license = { text = "MIT" }
-classifiers = [
-    "License :: OSI Approved :: MIT License",
-]
+license = "MIT"
 dependencies = [
 ]
 dynamic = ["version"]
 
 [tool.setuptools_scm]
-# can be empty if no extra settings are needed, presence enables setuptools_scm
+write_to = "textparser/version.py"
 
 [project.urls]
 homepage = "https://github.com/cantools/textparser"
@@ -58,6 +55,7 @@ warn_unused_ignores = true
 
 exclude = [
 	'build',
+	'textparser/version.py',
 ]
 
 [tool.ruff]
@@ -87,3 +85,6 @@ lint.ignore = [
     "RUF012",  # mutable-class-default
 ]
 lint.isort.known-first-party = ["textparser"]
+exclude = [
+    "textparser/version.py",
+]
