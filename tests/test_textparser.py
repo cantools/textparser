@@ -15,6 +15,7 @@ from textparser import (
     Forward,
     Grammar,
     MatchObject,
+    MismatchSingleton,
     NoMatch,
     Not,
     OneOrMore,
@@ -27,7 +28,6 @@ from textparser import (
     TokenizeError,
     ZeroOrMore,
     ZeroOrMoreDict,
-    _Mismatch,
     _Tokens,
     choice,
     markup_line,
@@ -698,7 +698,7 @@ class TextParserTest(unittest.TestCase):
     def test_grammar_none(self) -> None:
         class AnyAsNone(textparser.Pattern):
 
-            def match(self, tokens: _Tokens) -> MatchObject|_Mismatch:
+            def match(self, tokens: _Tokens) -> MatchObject|MismatchSingleton:
                 tokens.get_value()
 
                 # the cast is a bit hacky because Pattern.match() is

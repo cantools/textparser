@@ -4,20 +4,22 @@ import collections.abc
 import re
 import typing
 from dataclasses import dataclass
+from enum import Enum, auto
 from operator import itemgetter
 
 __author__ = 'Erik Moqvist'
 from .version import __version__  # noqa: F401
 
 
-class _Mismatch:
-    pass
+class _Mismatch(Enum):
+    MISMATCH = auto()
 
-
-MISMATCH = _Mismatch()
+MISMATCH = _Mismatch.MISMATCH
 """Returned by :func:`~textparser.Pattern.match()` on mismatch.
 
 """
+
+MismatchSingleton = typing.Literal[_Mismatch.MISMATCH]
 
 @dataclass(slots=True, frozen=True, eq=True)
 class Token:
@@ -84,7 +86,7 @@ class Pattern:
 
     """
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         """Returns :data:`~textparser.MISMATCH` on mismatch, and anything else
         on match.
 
@@ -100,7 +102,7 @@ class _String(Pattern):
     def __init__(self, kind: str) -> None:
         self.kind = kind
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         if self.kind == tokens.peek().kind:
             return tokens.get_value()
         else:
@@ -242,13 +244,13 @@ class Sequence(Pattern):
     def __init__(self, *patterns: Pattern | str) -> None:
         self.patterns = _wrap_strings(patterns)
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         matched: list[MatchObject] = []
 
         for pattern in self.patterns:
             mo = pattern.match(tokens)
 
-            if isinstance(mo, _Mismatch):
+            if mo is MISMATCH:
                 return MISMATCH
 
             matched.append(mo)
@@ -265,14 +267,14 @@ class Choice(Pattern):
     def __init__(self, *patterns: Pattern | str) -> None:
         self._patterns = _wrap_strings(patterns)
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         tokens.save()
 
         for pattern in self._patterns:
             tokens.mark_max_load()
             mo = pattern.match(tokens)
 
-            if not isinstance(mo, _Mismatch):
+            if mo is not MISMATCH:
                 tokens.drop()
 
                 return mo
@@ -295,10 +297,10 @@ class Tag(Pattern):
     def pattern(self) -> Pattern:
         return self._pattern
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         mo = self._pattern.match(tokens)
 
-        if not isinstance(mo, _Mismatch):
+        if mo is not MISMATCH:
             return (self._name, mo)
         else:
             return MISMATCH
@@ -326,7 +328,7 @@ class Forward(Pattern):
 
         return self
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         if self._pattern is not None:
             return self._pattern.match(tokens)
         return MISMATCH
@@ -376,7 +378,7 @@ class ChoiceDict(Pattern):
 
         self._patterns_map[kind] = pattern
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         kind = tokens.peek().kind
 
         if kind in self._patterns_map:
@@ -395,14 +397,14 @@ class Repeated(Pattern):
         self._pattern = _wrap_string(pattern)
         self._minimum = minimum
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         matched = []
         tokens.save()
 
         while True:
             mo = self._pattern.match(tokens)
 
-            if isinstance(mo, _Mismatch):
+            if mo is MISMATCH:
                 tokens.mark_max_restore()
                 break
 
@@ -433,14 +435,14 @@ class RepeatedDict(Repeated):
 
         self._key = key
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         matched: dict[str, list[MatchObject]] = {}
         tokens.save()
 
         while True:
             mo = self._pattern.match(tokens)
 
-            if isinstance(mo, _Mismatch):
+            if mo is MISMATCH:
                 tokens.mark_max_restore()
                 break
 
@@ -514,11 +516,11 @@ class DelimitedList(Pattern):
         self._pattern = _wrap_string(pattern)
         self._delim = _wrap_string(delim)
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         # First pattern.
         mo = self._pattern.match(tokens)
 
-        if isinstance(mo, _Mismatch):
+        if mo is MISMATCH:
             return MISMATCH
 
         matched = [mo]
@@ -528,13 +530,13 @@ class DelimitedList(Pattern):
             # Discard the delimiter.
             mo = self._delim.match(tokens)
 
-            if isinstance(mo, _Mismatch):
+            if mo is MISMATCH:
                 break
 
             # Pattern.
             mo = self._pattern.match(tokens)
 
-            if isinstance(mo, _Mismatch):
+            if mo is MISMATCH:
                 break
 
             matched.append(mo)
@@ -554,11 +556,11 @@ class Optional(Pattern):
     def __init__(self, pattern: Pattern | str) -> None:
         self._pattern = _wrap_string(pattern)
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         tokens.save()
         mo = self._pattern.match(tokens)
 
-        if isinstance(mo, _Mismatch):
+        if mo is MISMATCH:
             tokens.mark_max_restore()
 
             return []
@@ -573,7 +575,7 @@ class Any(Pattern):
 
     """
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         if tokens.peek().kind == '__EOF__':
             return MISMATCH
         else:
@@ -589,14 +591,14 @@ class AnyUntil(Pattern):
     def __init__(self, pattern: Pattern | str) -> None:
         self._pattern = _wrap_string(pattern)
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         matched: list[MatchObject] = []
 
         while True:
             tokens.save()
             mo = self._pattern.match(tokens)
 
-            if not isinstance(mo, _Mismatch):
+            if mo is not MISMATCH:
                 break
 
             tokens.restore()
@@ -616,12 +618,12 @@ class And(Pattern):
     def __init__(self, pattern: Pattern | str) -> None:
         self._pattern = _wrap_string(pattern)
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         tokens.save()
         mo = self._pattern.match(tokens)
         tokens.restore()
 
-        if isinstance(mo, _Mismatch):
+        if mo is MISMATCH:
             return MISMATCH
         else:
             return []
@@ -638,12 +640,12 @@ class Not(Pattern):
     def __init__(self, pattern: Pattern | str) -> None:
         self._pattern = _wrap_string(pattern)
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         tokens.save()
         mo = self._pattern.match(tokens)
         tokens.restore()
 
-        if isinstance(mo, _Mismatch):
+        if mo is MISMATCH:
             return []
         else:
             return MISMATCH
@@ -654,7 +656,7 @@ class NoMatch(Pattern):
 
     """
 
-    def match(self, tokens: _Tokens) -> MatchObject | _Mismatch:
+    def match(self, tokens: _Tokens) -> MatchObject | MismatchSingleton:
         return MISMATCH
 
 class Grammar:
@@ -677,7 +679,7 @@ class Grammar:
 
         parsed = self._root.match(tokens)
 
-        if not isinstance(parsed, _Mismatch) and tokens.peek_max().kind == '__EOF__':
+        if parsed is not MISMATCH and tokens.peek_max().kind == '__EOF__':
             return parsed
         else:
             raise GrammarError(tokens.peek_max().offset)
@@ -855,7 +857,7 @@ class Parser:
 
         raise NotImplementedError('No grammar defined.')
 
-    def parse(self, text: str, token_tree: bool=False, match_sof:bool=False) -> _Mismatch | MatchObject:
+    def parse(self, text: str, token_tree: bool=False, match_sof:bool=False) -> MatchObject | MismatchSingleton:
         """Parse given string `text` and return the parse tree. Raises
         :class:`~textparser.ParseError` on failure.
 
