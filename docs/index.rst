@@ -75,6 +75,12 @@ Here is a fictitious example grammar:
 .. autoclass:: textparser.Pattern
     :members:
 
+.. autoclass:: textparser.MatchObject
+
+.. autoclass:: textparser.Grammar
+
+.. autoclass:: textparser.Token
+
 .. autodata:: textparser.MISMATCH
 
 Exceptions
